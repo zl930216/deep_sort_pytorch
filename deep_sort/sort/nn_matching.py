@@ -54,7 +54,7 @@ def _cosine_distance(a, b, data_is_normalized=False):
     return 1.0 - np.dot(a, b.T)
 
 
-def _nn_euclidean_distance(x, y):
+def _nn_euclidean_distance(x, y, data_is_normalized=False):
     """Helper function for nearest neighbor distance metric (Euclidean).
 
     Parameters
