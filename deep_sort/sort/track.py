@@ -1,4 +1,9 @@
 # vim: expandtab:ts=4:sw=4
+import numpy as np
+import typing as tp
+from sa.sa_utils.dataclass import DeepsortTrackInfo
+from .detection import Detection
+from .kalman_filter import KalmanFilter
 
 
 class TrackState:
@@ -40,6 +45,9 @@ class Track:
     feature : Optional[ndarray]
         Feature vector of the detection this track originates from. If not None,
         this feature is added to the `features` cache.
+    track_info: Optional[DeepsortTrackInfo]
+        track information this track originates from.
+
 
     Attributes
     ----------
@@ -60,11 +68,21 @@ class Track:
     features : List[ndarray]
         A cache of features. On each measurement update, the associated feature
         vector is added to this list.
+    track_info: DeepsortTrackInfo
+        voyage information related to track
 
     """
 
-    def __init__(self, mean, covariance, track_id, n_init, max_age,
-                 feature=None):
+    def __init__(
+        self,
+        mean: np.ndarray,
+        covariance: np.ndarray,
+        track_id: int,
+        n_init: int,
+        max_age: int,
+        feature: tp.Optional[np.ndarray] = None,
+        track_info: tp.Optional[DeepsortTrackInfo] = None,
+    ) -> None:
         self.mean = mean
         self.covariance = covariance
         self.track_id = track_id
@@ -76,11 +94,15 @@ class Track:
         self.features = []
         if feature is not None:
             self.features.append(feature)
+        if track_info is not None:
+            self.track_info = track_info
+        else:
+            self.track_info = DeepsortTrackInfo(id=track_id)
 
         self._n_init = n_init
         self._max_age = max_age
 
-    def to_tlwh(self):
+    def to_tlwh(self) -> np.ndarray:
         """Get current position in bounding box format `(top left x, top left y,
         width, height)`.
 
@@ -95,7 +117,7 @@ class Track:
         ret[:2] -= ret[2:] / 2
         return ret
 
-    def to_tlbr(self):
+    def to_tlbr(self) -> np.ndarray:
         """Get current position in bounding box format `(min x, miny, max x,
         max y)`.
 
@@ -109,7 +131,7 @@ class Track:
         ret[2:] = ret[:2] + ret[2:]
         return ret
 
-    def predict(self, kf):
+    def predict(self, kf: KalmanFilter) -> None:
         """Propagate the state distribution to the current time step using a
         Kalman filter prediction step.
 
@@ -123,7 +145,7 @@ class Track:
         self.age += 1
         self.time_since_update += 1
 
-    def update(self, kf, detection):
+    def update(self, kf: KalmanFilter, detection: Detection) -> None:
         """Perform Kalman filter measurement update step and update the feature
         cache.
 
@@ -136,7 +158,8 @@ class Track:
 
         """
         self.mean, self.covariance = kf.update(
-            self.mean, self.covariance, detection.to_xyah())
+            self.mean, self.covariance, detection.to_xyah()
+        )
         self.features.append(detection.feature)
 
         self.hits += 1
@@ -144,23 +167,21 @@ class Track:
         if self.state == TrackState.Tentative and self.hits >= self._n_init:
             self.state = TrackState.Confirmed
 
-    def mark_missed(self):
-        """Mark this track as missed (no association at the current time step).
-        """
+    def mark_missed(self) -> None:
+        """Mark this track as missed (no association at the current time step)."""
         if self.state == TrackState.Tentative:
             self.state = TrackState.Deleted
         elif self.time_since_update > self._max_age:
             self.state = TrackState.Deleted
 
-    def is_tentative(self):
-        """Returns True if this track is tentative (unconfirmed).
-        """
+    def is_tentative(self) -> bool:
+        """Returns True if this track is tentative (unconfirmed)."""
         return self.state == TrackState.Tentative
 
-    def is_confirmed(self):
+    def is_confirmed(self) -> bool:
         """Returns True if this track is confirmed."""
         return self.state == TrackState.Confirmed
 
-    def is_deleted(self):
+    def is_deleted(self) -> bool:
         """Returns True if this track is dead and should be deleted."""
         return self.state == TrackState.Deleted
