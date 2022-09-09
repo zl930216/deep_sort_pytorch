@@ -1,6 +1,6 @@
 # vim: expandtab:ts=4:sw=4
 import numpy as np
-import typing as tp
+from typing import Optional
 from sa.sa_utils.dataclass import DeepsortTrackInfo
 from .detection import Detection
 from .kalman_filter import KalmanFilter
@@ -80,8 +80,8 @@ class Track:
         track_id: int,
         n_init: int,
         max_age: int,
-        feature: tp.Optional[np.ndarray] = None,
-        track_info: tp.Optional[DeepsortTrackInfo] = None,
+        feature: Optional[np.ndarray] = None,
+        track_info: Optional[DeepsortTrackInfo] = None,
     ) -> None:
         self.mean = mean
         self.covariance = covariance

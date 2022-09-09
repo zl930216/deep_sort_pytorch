@@ -1,10 +1,13 @@
 # vim: expandtab:ts=4:sw=4
 from __future__ import absolute_import
+from typing import Tuple, List
 import numpy as np
 from . import kalman_filter
 from . import linear_assignment
 from . import iou_matching
 from .track import Track
+from .nn_matching import NearestNeighborDistanceMetric
+from .detection import Detection
 
 
 class Tracker:
@@ -39,14 +42,14 @@ class Tracker:
 
     def __init__(
         self,
-        metric,
-        max_iou_distance=0.7,
-        max_age=70,
-        n_init=3,
-        kf_only_position=False,
-        kf_std_position=1.0 / 20,
-        kf_std_velocity=1.0 / 160,
-    ):
+        metric: NearestNeighborDistanceMetric,
+        max_iou_distance: float = 0.7,
+        max_age: int = 70,
+        n_init: int = 3,
+        kf_only_position: bool = False,
+        kf_std_position: float = 1.0 / 20,
+        kf_std_velocity: float = 1.0 / 160,
+    ) -> None:
         self.metric = metric
         self.max_iou_distance = max_iou_distance
         self.max_age = max_age
@@ -58,10 +61,10 @@ class Tracker:
             std_weight_velocity=kf_std_velocity,
         )
         self.kf_only_position = kf_only_position
-        self.tracks = []
+        self.tracks: List[Track] = []
         self._next_id = 1
 
-    def predict(self):
+    def predict(self) -> None:
         """Propagate track state distributions one time step forward.
 
         This function should be called once every time step, before `update`.
@@ -69,7 +72,7 @@ class Tracker:
         for track in self.tracks:
             track.predict(self.kf)
 
-    def update(self, detections):
+    def update(self, detections: List[Detection]) -> None:
         """Perform measurement update and track management.
 
         Parameters
@@ -103,8 +106,15 @@ class Tracker:
             np.asarray(features), np.asarray(targets), active_targets
         )
 
-    def _match(self, detections):
-        def gated_metric(tracks, dets, track_indices, detection_indices):
+    def _match(
+        self, detections: List[Detection]
+    ) -> Tuple[List[Tuple[int, int]], List[int], List[int]]:
+        def gated_metric(
+            tracks: List[Track],
+            dets: List[Detection],
+            track_indices: List[int],
+            detection_indices: List[int],
+        ) -> np.ndarray:
             features = np.array([dets[i].feature for i in detection_indices])
             targets = np.array([tracks[i].track_id for i in track_indices])
             cost_matrix = self.metric.distance(features, targets)
@@ -164,7 +174,7 @@ class Tracker:
         unmatched_tracks = list(set(unmatched_tracks_a + unmatched_tracks_b))
         return matches, unmatched_tracks, unmatched_detections
 
-    def _initiate_track(self, detection):
+    def _initiate_track(self, detection: Detection) -> None:
         mean, covariance = self.kf.initiate(detection.to_xyah())
         self.tracks.append(
             Track(
