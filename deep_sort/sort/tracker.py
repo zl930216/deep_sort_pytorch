@@ -1,6 +1,6 @@
 # vim: expandtab:ts=4:sw=4
 from __future__ import absolute_import
-from typing import Tuple, List
+from typing import Tuple, List, Set
 import numpy as np
 from . import kalman_filter
 from . import linear_assignment
@@ -187,3 +187,11 @@ class Tracker:
             )
         )
         self._next_id += 1
+
+    @property
+    def occupied_global_ids(self) -> Set[int]:
+        return {
+            track.track_info.global_id
+            for track in self.tracks
+            if track.track_info.global_id > 0
+        }
