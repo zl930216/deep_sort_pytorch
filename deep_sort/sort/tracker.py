@@ -1,6 +1,6 @@
 # vim: expandtab:ts=4:sw=4
 from __future__ import absolute_import
-from typing import Tuple, List, Set
+from typing import Tuple, List, Set, Dict
 import numpy as np
 from . import kalman_filter
 from . import linear_assignment
@@ -44,7 +44,11 @@ class Tracker:
         self,
         metric: NearestNeighborDistanceMetric,
         max_iou_distance: float = 0.7,
-        max_age: int = 70,
+        max_age: Dict[str, int] = {
+            "tentative": 0,
+            "confirmed": 70,
+            "global_matched": 70,
+        },
         n_init: int = 3,
         kf_only_position: bool = False,
         kf_std_position: float = 1.0 / 20,

@@ -1,6 +1,6 @@
 # vim: expandtab:ts=4:sw=4
 import numpy as np
-from typing import Optional
+from typing import Optional, Dict
 from sa.sa_utils.dataclass import DeepsortTrackInfo
 from .detection import Detection
 from .kalman_filter import KalmanFilter
@@ -79,7 +79,7 @@ class Track:
         covariance: np.ndarray,
         track_id: int,
         n_init: int,
-        max_age: int,
+        max_age: Dict[str, int],
         feature: Optional[np.ndarray] = None,
         track_info: Optional[DeepsortTrackInfo] = None,
     ) -> None:
@@ -170,9 +170,17 @@ class Track:
 
     def mark_missed(self) -> None:
         """Mark this track as missed (no association at the current time step)."""
-        if self.state == TrackState.Tentative:
+        if (
+            self.state == TrackState.Tentative
+            and self.time_since_update > self._max_age["tentative"]
+        ):
             self.state = TrackState.Deleted
-        elif self.time_since_update > self._max_age:
+        elif (
+            self.global_matched
+            and self.time_since_update > self._max_age["global_matched"]
+        ):
+            self.state = TrackState.Deleted
+        elif self.time_since_update > self._max_age["confirmed"]:
             self.state = TrackState.Deleted
 
     def is_tentative(self) -> bool:
@@ -186,3 +194,7 @@ class Track:
     def is_deleted(self) -> bool:
         """Returns True if this track is dead and should be deleted."""
         return self.state == TrackState.Deleted
+
+    @property
+    def global_matched(self) -> bool:
+        return self.track_info.global_id > 0
