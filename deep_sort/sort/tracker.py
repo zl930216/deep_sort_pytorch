@@ -148,7 +148,7 @@ class Tracker:
         ) = linear_assignment.matching_cascade(
             gated_metric,
             self.metric.matching_threshold,
-            self.max_age,
+            max(self.max_age.values()),
             self.tracks,
             detections,
             confirmed_tracks,
