@@ -24,8 +24,8 @@ class TrackState:
 class Track:
     """
     A single target track with state space `(x, y, a, h)` and associated
-    velocities, where `(x, y)` is the center of the bounding box, `a` is the
-    aspect ratio and `h` is the height.
+    velocities, where `(x, y)` is the center x and bottom y of the bounding box,
+    `a` is the aspect ratio and `h` is the height.
 
     Parameters
     ----------
@@ -114,7 +114,8 @@ class Track:
         """
         ret = self.mean[:4].copy()
         ret[2] *= ret[3]
-        ret[:2] -= ret[2:] / 2
+        ret[0] -= ret[2] / 2
+        ret[1] -= ret[3]
         return ret
 
     def to_tlbr(self) -> np.ndarray:

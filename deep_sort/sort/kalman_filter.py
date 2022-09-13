@@ -1,6 +1,7 @@
 # vim: expandtab:ts=4:sw=4
 import numpy as np
 import scipy.linalg
+from typing import Tuple
 
 
 """
@@ -29,7 +30,7 @@ class KalmanFilter(object):
 
         x, y, a, h, vx, vy, va, vh
 
-    contains the bounding box center position (x, y), aspect ratio a, height h,
+    contains the bounding box position (center_x, bottem_y), aspect ratio a, height h,
     and their respective velocities.
 
     Object motion follows a constant velocity model. The bounding box location
@@ -40,10 +41,10 @@ class KalmanFilter(object):
 
     def __init__(
         self,
-        only_position=False,
-        std_weight_position=1.0 / 20,
-        std_weight_velocity=1.0 / 160,
-    ):
+        only_position: bool = False,
+        std_weight_position: float = 1.0 / 20,
+        std_weight_velocity: float = 1.0 / 160,
+    ) -> None:
         self._only_position = only_position
 
         ndim, dt = 4, 1.0
@@ -60,13 +61,13 @@ class KalmanFilter(object):
         self._std_weight_position = std_weight_position
         self._std_weight_velocity = std_weight_velocity
 
-    def initiate(self, measurement):
+    def initiate(self, measurement: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Create track from unassociated measurement.
 
         Parameters
         ----------
         measurement : ndarray
-            Bounding box coordinates (x, y, a, h) with center position (x, y),
+            Bounding box coordinates (x, y, a, h) with position (center_x, bottom_y),
             aspect ratio a, and height h.
 
         Returns
@@ -94,7 +95,9 @@ class KalmanFilter(object):
         covariance = np.diag(np.square(std))
         return mean, covariance
 
-    def predict(self, mean, covariance):
+    def predict(
+        self, mean: np.ndarray, covariance: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """Run Kalman filter prediction step.
 
         Parameters
@@ -139,7 +142,9 @@ class KalmanFilter(object):
 
         return mean, covariance
 
-    def project(self, mean, covariance):
+    def project(
+        self, mean: np.ndarray, covariance: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """Project state distribution to measurement space.
 
         Parameters
@@ -170,7 +175,9 @@ class KalmanFilter(object):
         )
         return mean, covariance + innovation_cov
 
-    def update(self, mean, covariance, measurement):
+    def update(
+        self, mean: np.ndarray, covariance: np.ndarray, measurement: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """Run Kalman filter correction step.
 
         Parameters
@@ -181,8 +188,8 @@ class KalmanFilter(object):
             The state's covariance matrix (8x8 dimensional).
         measurement : ndarray
             The 4 dimensional measurement vector (x, y, a, h), where (x, y)
-            is the center position, a the aspect ratio, and h the height of the
-            bounding box.
+            is the bottom edge center position, a the aspect ratio,
+            and h the height of the bounding box.
 
         Returns
         -------
@@ -210,7 +217,13 @@ class KalmanFilter(object):
         )
         return new_mean, new_covariance
 
-    def gating_distance(self, mean, covariance, measurements, only_position=False):
+    def gating_distance(
+        self,
+        mean: np.ndarray,
+        covariance: np.ndarray,
+        measurements: np.ndarray,
+        only_position: bool = False,
+    ) -> np.ndarray:
         """Compute gating distance between state distribution and measurements.
 
         A suitable distance threshold can be obtained from `chi2inv95`. If
@@ -225,8 +238,8 @@ class KalmanFilter(object):
             Covariance of the state distribution (8x8 dimensional).
         measurements : ndarray
             An Nx4 dimensional matrix of N measurements, each in
-            format (x, y, a, h) where (x, y) is the bounding box center
-            position, a the aspect ratio, and h the height.
+            format (x, y, a, h) where (x, y) is the bounding box bottom edge
+            center position, a the aspect ratio, and h the height.
         only_position : Optional[bool]
             If True, distance computation is done with respect to the bounding
             box center position only.
