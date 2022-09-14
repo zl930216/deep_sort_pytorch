@@ -1,7 +1,9 @@
 # vim: expandtab:ts=4:sw=4
 import numpy as np
 from typing import Optional, Dict
-from sa.sa_utils.dataclass import DeepsortTrackInfo
+import cattrs
+from sa.ais.ais_reader import get_ship_type
+from sa.sa_utils.dataclass import DeepsortTrackInfo, TargetOutputData
 from .detection import Detection
 from .kalman_filter import KalmanFilter
 
@@ -79,9 +81,9 @@ class Track:
         covariance: np.ndarray,
         track_id: int,
         n_init: int,
+        n_init_dao_relation: int,
         max_age: Dict[str, int],
         feature: Optional[np.ndarray] = None,
-        track_info: Optional[DeepsortTrackInfo] = None,
     ) -> None:
         self.mean = mean
         self.covariance = covariance
@@ -94,13 +96,11 @@ class Track:
         self.features = []
         if feature is not None:
             self.features.append(feature)
-        if track_info is not None:
-            self.track_info = track_info
-        else:
-            self.track_info = DeepsortTrackInfo(id=track_id)
+        self.track_info = DeepsortTrackInfo(id=track_id)
 
         self._n_init = n_init
         self._max_age = max_age
+        self._match_dao_target_history = np.ones(n_init_dao_relation, np.int32) * -1
 
     def to_tlwh(self) -> np.ndarray:
         """Get current position in bounding box format `(top left x, top left y,
@@ -145,6 +145,9 @@ class Track:
         self.mean, self.covariance = kf.predict(self.mean, self.covariance)
         self.age += 1
         self.time_since_update += 1
+        if self.is_confirmed() and not self.global_matched:
+            self._match_dao_target_history = np.roll(self._match_dao_target_history, -1)
+            self._match_dao_target_history[-1] = -1
 
     def update(self, kf: KalmanFilter, detection: Detection) -> None:
         """Perform Kalman filter measurement update step and update the feature
@@ -167,6 +170,29 @@ class Track:
         self.time_since_update = 0
         if self.state == TrackState.Tentative and self.hits >= self._n_init:
             self.state = TrackState.Confirmed
+
+    def refresh_track_info(self, dao_target: TargetOutputData) -> None:
+        track_info_dict = {
+            "id": self.track_id,
+            "global_id": dao_target.id,
+            "source": list(dao_target.sid.keys()),
+            "lat": dao_target.lat,
+            "lon": dao_target.lon,
+            "width": dao_target.width,
+            "length": dao_target.length,
+            "object_type": get_ship_type(int(dao_target.ship_type)),
+            "mmsi": int(dao_target.mmsi),
+            "vn": dao_target.vn,
+            "ve": dao_target.ve,
+            "sog": dao_target.sog,
+            "cog": dao_target.cog,
+        }
+        self.track_info = cattrs.structure(track_info_dict, DeepsortTrackInfo)
+
+    def mark_match_dao_target(self, dao_target: TargetOutputData) -> None:
+        self._match_dao_target_history[-1] = dao_target.id
+        if (self._match_dao_target_history == dao_target.id).all():
+            self.refresh_track_info(dao_target)
 
     def mark_missed(self) -> None:
         """Mark this track as missed (no association at the current time step)."""
@@ -198,3 +224,7 @@ class Track:
     @property
     def global_matched(self) -> bool:
         return self.track_info.global_id > 0
+
+    @property
+    def global_id(self) -> int:
+        return self.track_info.global_id

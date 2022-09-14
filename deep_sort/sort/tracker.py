@@ -2,6 +2,9 @@
 from __future__ import absolute_import
 from typing import Tuple, List, Set, Dict
 import numpy as np
+from scipy.optimize import linear_sum_assignment as linear_assignment
+from scipy.linalg import solve_triangular
+from sa.sa_utils.dataclass import TargetOutputData
 from . import kalman_filter
 from . import linear_assignment
 from . import iou_matching
@@ -50,14 +53,17 @@ class Tracker:
             "global_matched": 70,
         },
         n_init: int = 3,
+        n_init_dao_relation: int = 5,
         kf_only_position: bool = False,
         kf_std_position: float = 1.0 / 20,
         kf_std_velocity: float = 1.0 / 160,
+        kf_std_position_dao_target: float = 1.0 / 20,
     ) -> None:
         self.metric = metric
         self.max_iou_distance = max_iou_distance
         self.max_age = max_age
         self.n_init = n_init
+        self.n_init_dao_relation = n_init_dao_relation
 
         self.kf = kalman_filter.KalmanFilter(
             only_position=kf_only_position,
@@ -65,6 +71,9 @@ class Tracker:
             std_weight_velocity=kf_std_velocity,
         )
         self.kf_only_position = kf_only_position
+        self.kf_dao_measurement_cov = np.diag(
+            np.square([kf_std_position_dao_target, kf_std_position_dao_target])
+        )
         self.tracks: List[Track] = []
         self._next_id = 1
 
@@ -186,6 +195,7 @@ class Tracker:
                 covariance,
                 self._next_id,
                 self.n_init,
+                self.n_init_dao_relation,
                 self.max_age,
                 detection.feature,
             )
@@ -194,8 +204,53 @@ class Tracker:
 
     @property
     def occupied_global_ids(self) -> Set[int]:
-        return {
-            track.track_info.global_id
-            for track in self.tracks
-            if track.track_info.global_id > 0
-        }
+        return {track.global_id for track in self.tracks if track.global_matched}
+
+    def update_dao_relations(
+        self,
+        unoccupied_dao_targets_xy: np.ndarray,
+        unoccupied_dao_targets: List[TargetOutputData],
+        occupied_dao_targets_dict: Dict[int, TargetOutputData],
+        gated_cost: float = 1e5,
+    ) -> None:
+        unmatched_confirmed_tracks: List[int] = []
+        unmatched_confirmed_tracks_mean: List[np.ndarray] = []
+        unmatched_confirmed_tracks_cov: List[np.ndarray] = []
+        for idx, track in enumerate(self.tracks):
+            # refresh former matched tracks
+            if track.global_matched:
+                if track.global_id in occupied_dao_targets_dict:
+                    track.refresh_track_info(occupied_dao_targets_dict[track.global_id])
+            elif track.is_confirmed():
+                unmatched_confirmed_tracks.append(idx)
+                unmatched_confirmed_tracks_mean.append(track.mean[0:2])
+                unmatched_confirmed_tracks_cov.append(track.covariance[0:2, 0:2])
+        # cost matrix generation
+        cost_matrix_list: List[np.ndarray] = []
+        gating_threshold = kalman_filter.chi2inv95[2]
+        for idx, mean in enumerate(unmatched_confirmed_tracks_mean):
+            cov = unmatched_confirmed_tracks_cov[idx]
+            gating_distance = self._calculate_track2dao_maha_distance(
+                mean, cov, unoccupied_dao_targets_xy
+            )
+            gating_distance[gating_distance > gating_threshold] = gated_cost + 1e-5
+            cost_matrix_list.append(gating_distance)
+        # linear assignment
+        cost_matrix = np.array(cost_matrix_list)
+        row_indices, col_indices = linear_assignment(cost_matrix)
+        for row, col in zip(row_indices, col_indices):
+            if cost_matrix[row, col] < gated_cost:
+                track = self.tracks[unmatched_confirmed_tracks[row]]
+                dao_target = unoccupied_dao_targets[col]
+                track.mark_match_dao_target(dao_target)
+
+    def _calculate_track2dao_maha_distance(
+        self, mean: np.ndarray, cov: np.ndarray, measurements: np.ndarray
+    ) -> np.ndarray:
+        cholesky_factor = np.linalg.cholesky(cov + self.kf_dao_measurement_cov)
+        d = measurements - mean
+        z = solve_triangular(
+            cholesky_factor, d.T, lower=True, check_finite=False, overwrite_b=True
+        )
+        maha_distance = np.sum(z * z, axis=0)
+        return maha_distance
