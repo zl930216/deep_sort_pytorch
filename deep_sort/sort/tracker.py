@@ -213,6 +213,8 @@ class Tracker:
         occupied_dao_targets_dict: Dict[int, TargetOutputData],
         gated_cost: float = 1e5,
     ) -> None:
+        if not unoccupied_dao_targets and not occupied_dao_targets_dict:
+            return
         unmatched_confirmed_tracks: List[int] = []
         unmatched_confirmed_tracks_mean: List[np.ndarray] = []
         unmatched_confirmed_tracks_cov: List[np.ndarray] = []
@@ -236,6 +238,8 @@ class Tracker:
             gating_distance[gating_distance > gating_threshold] = gated_cost + 1e-5
             cost_matrix_list.append(gating_distance)
         # linear assignment
+        if not cost_matrix_list:
+            return
         cost_matrix = np.array(cost_matrix_list)
         row_indices, col_indices = linear_sum_assignment(cost_matrix)
         for row, col in zip(row_indices, col_indices):
