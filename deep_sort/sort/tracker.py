@@ -2,7 +2,7 @@
 from __future__ import absolute_import
 from typing import Tuple, List, Set, Dict
 import numpy as np
-from scipy.optimize import linear_sum_assignment as linear_assignment
+from scipy.optimize import linear_sum_assignment
 from scipy.linalg import solve_triangular
 from sa.sa_utils.dataclass import TargetOutputData
 from . import kalman_filter
@@ -237,7 +237,7 @@ class Tracker:
             cost_matrix_list.append(gating_distance)
         # linear assignment
         cost_matrix = np.array(cost_matrix_list)
-        row_indices, col_indices = linear_assignment(cost_matrix)
+        row_indices, col_indices = linear_sum_assignment(cost_matrix)
         for row, col in zip(row_indices, col_indices):
             if cost_matrix[row, col] < gated_cost:
                 track = self.tracks[unmatched_confirmed_tracks[row]]
