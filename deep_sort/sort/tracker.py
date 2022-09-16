@@ -216,7 +216,7 @@ class Tracker:
         if not unoccupied_dao_targets and not occupied_dao_targets_dict:
             return
         unmatched_confirmed_tracks: List[int] = []
-        unmatched_confirmed_tracks_mean: List[np.ndarray] = []
+        unmatched_confirmed_tracks_tlbr: List[np.ndarray] = []
         unmatched_confirmed_tracks_cov: List[np.ndarray] = []
         for idx, track in enumerate(self.tracks):
             # refresh former matched tracks
@@ -225,15 +225,15 @@ class Tracker:
                     track.refresh_track_info(occupied_dao_targets_dict[track.global_id])
             elif track.is_confirmed():
                 unmatched_confirmed_tracks.append(idx)
-                unmatched_confirmed_tracks_mean.append(track.mean[0:2])
+                unmatched_confirmed_tracks_tlbr.append(track.to_tlbr())
                 unmatched_confirmed_tracks_cov.append(track.covariance[0:2, 0:2])
         # cost matrix generation
         cost_matrix_list: List[np.ndarray] = []
         gating_threshold = kalman_filter.chi2inv95[2]
-        for idx, mean in enumerate(unmatched_confirmed_tracks_mean):
+        for idx, tlbr in enumerate(unmatched_confirmed_tracks_tlbr):
             cov = unmatched_confirmed_tracks_cov[idx]
             gating_distance = self._calculate_track2dao_maha_distance(
-                mean, cov, unoccupied_dao_targets_xy
+                tlbr, cov, unoccupied_dao_targets_xy
             )
             gating_distance[gating_distance > gating_threshold] = gated_cost + 1e-5
             cost_matrix_list.append(gating_distance)
@@ -249,10 +249,24 @@ class Tracker:
                 track.mark_match_dao_target(dao_target)
 
     def _calculate_track2dao_maha_distance(
-        self, mean: np.ndarray, cov: np.ndarray, measurements: np.ndarray
+        self,
+        tlbr: np.ndarray,
+        cov: np.ndarray,
+        measurements: np.ndarray,
+        track_cov_considered: bool = False,
     ) -> np.ndarray:
-        cholesky_factor = np.linalg.cholesky(cov + self.kf_dao_measurement_cov)
-        d = measurements - mean
+        if track_cov_considered:
+            cholesky_factor = np.linalg.cholesky(cov + self.kf_dao_measurement_cov)
+        else:
+            cholesky_factor = np.linalg.cholesky(self.kf_dao_measurement_cov)
+        x1, y1, x2, y2 = tlbr
+        x = measurements[:, 0]
+        y = measurements[:, 1]
+        d_x = np.minimum(np.abs(x - x1), np.abs(x - x2))
+        d_x[(x <= x2) & (x >= x1)] = 0
+        d_y = np.minimum(np.abs(y - y1), np.abs(y - y2))
+        d_y[(y <= x2) & (y >= y1)] = 0
+        d = np.array([d_x, d_y]).T
         z = solve_triangular(
             cholesky_factor, d.T, lower=True, check_finite=False, overwrite_b=True
         )
