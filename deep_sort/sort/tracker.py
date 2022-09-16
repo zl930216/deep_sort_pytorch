@@ -227,6 +227,8 @@ class Tracker:
                 unmatched_confirmed_tracks.append(idx)
                 unmatched_confirmed_tracks_tlbr.append(track.to_tlbr())
                 unmatched_confirmed_tracks_cov.append(track.covariance[0:2, 0:2])
+        if not unoccupied_dao_targets or not unmatched_confirmed_tracks:
+            return
         # cost matrix generation
         cost_matrix_list: List[np.ndarray] = []
         gating_threshold = kalman_filter.chi2inv95[2]
@@ -238,8 +240,6 @@ class Tracker:
             gating_distance[gating_distance > gating_threshold] = gated_cost + 1e-5
             cost_matrix_list.append(gating_distance)
         # linear assignment
-        if not cost_matrix_list:
-            return
         cost_matrix = np.array(cost_matrix_list)
         row_indices, col_indices = linear_sum_assignment(cost_matrix)
         for row, col in zip(row_indices, col_indices):
