@@ -211,6 +211,7 @@ class Tracker:
         unoccupied_dao_targets_xy: np.ndarray,
         unoccupied_dao_targets: List[TargetOutputData],
         occupied_dao_targets_dict: Dict[int, TargetOutputData],
+        gating_threshold: float = kalman_filter.chi2inv95[2],
         gated_cost: float = 1e5,
     ) -> None:
         if not unoccupied_dao_targets and not occupied_dao_targets_dict:
@@ -231,7 +232,6 @@ class Tracker:
             return
         # cost matrix generation
         cost_matrix_list: List[np.ndarray] = []
-        gating_threshold = kalman_filter.chi2inv95[2]
         for idx, tlbr in enumerate(unmatched_confirmed_tracks_tlbr):
             cov = unmatched_confirmed_tracks_cov[idx]
             gating_distance = self._calculate_track2dao_maha_distance(
